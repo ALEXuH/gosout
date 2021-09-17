@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -138,6 +139,7 @@ func init() {
 	viper.SetConfigType("yaml")                   // REQUIRED if the config file does not have the extension in the name
 	viper.AddConfigPath(filepath.Dir(os.Args[0])) // optionally look for config in the working directory
 	//viper.AddConfigPath("C:\\Users\\think\\go\\src\\output\\common\\") // optionally look for config in the working directory
+	//viper.AddConfigPath("C:\\Users\\think\\go\\src\\awesomeProject1\\") // optionally look for config in the working directory
 	logger.Println(" current run path:", filepath.Dir(os.Args[0]))
 	err := viper.ReadInConfig() // Find and read the config file
 	if err != nil {             // Handle errors reading the config file
@@ -316,6 +318,20 @@ func parseExpr(value []string) [][]match {
 					Expr:      "!=",
 					ExprValue: strings.TrimSpace(v2[1]),
 				})
+			} else if strings.Contains(v1, "in") {
+				v2 := strings.Split(v1, "in")
+				res = append(res, match{
+					Key:       strings.TrimSpace(v2[0]),
+					Expr:      "in",
+					ExprValue: strings.TrimSpace(v2[1]),
+				})
+			} else if strings.Contains(v1, "regex") {
+				v2 := strings.Split(v1, "regex")
+				res = append(res, match{
+					Key:       strings.TrimSpace(v2[0]),
+					Expr:      "regex",
+					ExprValue: strings.TrimSpace(v2[1]),
+				})
 			} else {
 				logger.Println("expr do not support ", v1)
 				continue
@@ -328,6 +344,16 @@ func parseExpr(value []string) [][]match {
 	return result
 }
 
+func isIn(str string, value string) bool {
+	arr := strings.Split(str, ",")
+	for _, v := range arr {
+		if value == v {
+			return true
+		}
+	}
+	return false
+}
+
 func isFilter(msg map[string]interface{}, filters *[][]match) bool {
 	if len(*filters) == 0 {
 		return true
@@ -337,21 +363,54 @@ func isFilter(msg map[string]interface{}, filters *[][]match) bool {
 		for _, filter := range v {
 			switch filter.Expr {
 			case "==":
-				if msg[filter.Key] == filter.ExprValue {
-					continue
-				} else {
+				if msg[filter.Key] == nil {
 					flag = false
 					break
+				} else {
+					if interface2String(msg[filter.Key]) == filter.ExprValue {
+						continue
+					} else {
+						flag = false
+						break
+					}
 				}
 			case "!=":
-				if msg[filter.Key] != filter.ExprValue {
-					continue
-				} else {
+				if msg[filter.Key] == nil {
 					flag = false
 					break
+				} else {
+					if interface2String(msg[filter.Key]) != filter.ExprValue {
+						continue
+					} else {
+						flag = false
+						break
+					}
+				}
+			case "in":
+				if msg[filter.Key] == nil {
+					flag = false
+					break
+				} else {
+					if isIn(filter.ExprValue, interface2String(msg[filter.Key])) {
+						continue
+					} else {
+						flag = false
+						break
+					}
+				}
+			case "regex":
+				if msg[filter.Key] == nil {
+					flag = false
+					break
+				} else {
+					if f, _ := regexp.MatchString(filter.ExprValue, interface2String(msg[filter.Key])); f {
+						continue
+					} else {
+						flag = false
+						break
+					}
 				}
 			}
-
 		}
 		if flag {
 			return true
@@ -385,7 +444,7 @@ func filer(ctx context.Context) {
 					// 过滤数据
 					//fmt.Println(msg)
 					if !isFilter(msg, &config.filterConfig.Filter) {
-						logger.Println("filter msg ...")
+						//logger.Println("filter msg ...")
 						continue
 					}
 					// 根据条件添加数据
@@ -457,6 +516,7 @@ func filer(ctx context.Context) {
 								args[ix] = 0.0
 							case "DateTime", "Nullable(DateTime)":
 								args[ix] = "1996-03-01 12:12:12"
+								//args[ix] = time.Now().Format("2006-01-02 15:04:05")
 								for _, layout := range config.clickhouseConfig.DateFormat {
 									if t1, err := time.ParseInLocation(layout, value.(string), location); err == nil {
 										args[ix] = t1
@@ -537,15 +597,19 @@ func exec(ctx context.Context) {
 			}
 		}
 	}()
-	tx, _ := con.Begin()
+	tx, err := con.Begin()
 	sql := fmt.Sprintf("INSERT INTO %s(%s) VALUES(%s)", config.clickhouseConfig.TableName, fields, strings.Join(fieldValue, ","))
+
+	if err != nil {
+		logger.Println("db begin create transaction error %s", err)
+	}
 	//logger.Println(sql)
 	st, err := tx.Prepare(sql)
 
 	if err != nil {
 		logger.Println(fmt.Sprintf("prepare sql err %s", err))
 	}
-	//defer st.Close()
+	defer st.Close()
 
 	countFlush := 0
 	t := time.NewTicker(time.Duration(config.clickhouseConfig.FlushTime) * time.Second)
