@@ -228,7 +228,6 @@ func init() {
 	}
 	con.SetMaxOpenConns(20)
 	con.SetMaxIdleConns(config.clickhouseConfig.Concurrent)
-	//con.SetConnMaxLifetime(30 * time.Second)
 	con.SetConnMaxLifetime(time.Second * time.Duration(config.clickhouseConfig.ConnectionLifeTime))
 }
 
@@ -587,7 +586,6 @@ func exec(ctx context.Context) {
 				con, _ = sqlx.Open("clickhouse", driver)
 				con.SetMaxOpenConns(20)
 				con.SetMaxIdleConns(config.clickhouseConfig.Concurrent)
-				//con.SetConnMaxLifetime(30 * time.Second)
 				con.SetConnMaxLifetime(time.Second * time.Duration(config.clickhouseConfig.ConnectionLifeTime))
 				if err := con.Ping(); err == nil {
 					wg.Add(1)
