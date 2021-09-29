@@ -56,20 +56,21 @@ type FilterConfig struct {
 }
 
 type ClickhouseConfig struct {
-	Database    string
-	TableName   string
-	Fields      string
-	Debug       bool
-	UserName    string
-	Password    string
-	AltHosts    string
-	BlockSize   int
-	Lz4Compress int
-	Concurrent  int
-	FlushSize   int
-	FlushTime   int
-	Location    string
-	DateFormat  []string
+	Database           string
+	TableName          string
+	Fields             string
+	Debug              bool
+	UserName           string
+	Password           string
+	AltHosts           string
+	BlockSize          int
+	Lz4Compress        int
+	Concurrent         int
+	FlushSize          int
+	FlushTime          int
+	Location           string
+	DateFormat         []string
+	ConnectionLifeTime int
 }
 
 type KafkaConfig struct {
@@ -157,20 +158,21 @@ func init() {
 	convertChannel = make(chan []interface{}, systemConfig.ChannelCount*2)
 
 	clickhouseConfig := ClickhouseConfig{
-		Database:    viper.GetString("Clickhouse.Database"),
-		TableName:   viper.GetString("Clickhouse.TableName"),
-		Fields:      viper.GetString("Clickhouse.Fields"),
-		Debug:       viper.GetBool("Clickhouse.Debug"),
-		UserName:    viper.GetString("Clickhouse.UserName"),
-		Password:    viper.GetString("Clickhouse.Password"),
-		AltHosts:    viper.GetString("Clickhouse.Hosts"),
-		BlockSize:   viper.GetInt("Clickhouse.BlockSize"),
-		Lz4Compress: viper.GetInt("Clickhouse.Lz4Compress"),
-		Concurrent:  viper.GetInt("Clickhouse.Concurrent"),
-		FlushSize:   viper.GetInt("Clickhouse.FlushSize"),
-		FlushTime:   viper.GetInt("Clickhouse.FlushTime"),
-		Location:    viper.GetString("Clickhouse.Location"),
-		DateFormat:  viper.GetStringSlice("Clickhouse.DateTimeFormat"),
+		Database:           viper.GetString("Clickhouse.Database"),
+		TableName:          viper.GetString("Clickhouse.TableName"),
+		Fields:             viper.GetString("Clickhouse.Fields"),
+		Debug:              viper.GetBool("Clickhouse.Debug"),
+		UserName:           viper.GetString("Clickhouse.UserName"),
+		Password:           viper.GetString("Clickhouse.Password"),
+		AltHosts:           viper.GetString("Clickhouse.Hosts"),
+		BlockSize:          viper.GetInt("Clickhouse.BlockSize"),
+		Lz4Compress:        viper.GetInt("Clickhouse.Lz4Compress"),
+		Concurrent:         viper.GetInt("Clickhouse.Concurrent"),
+		FlushSize:          viper.GetInt("Clickhouse.FlushSize"),
+		FlushTime:          viper.GetInt("Clickhouse.FlushTime"),
+		Location:           viper.GetString("Clickhouse.Location"),
+		DateFormat:         viper.GetStringSlice("Clickhouse.DateTimeFormat"),
+		ConnectionLifeTime: viper.GetInt("Clickhouse.ConnectionLifeTime"),
 	}
 	kafkaConfig := KafkaConfig{
 		Topic:    viper.GetString("Kafka.Topic"),
@@ -224,10 +226,10 @@ func init() {
 	if clickhouseConfig.Fields == "*" {
 		retrieve(clickhouseConfig.Database, clickhouseConfig.TableName)
 	}
-	con.SetMaxOpenConns(30)
-	con.SetMaxIdleConns(15)
-	con.SetConnMaxLifetime(30 * time.Second)
-	//con.SetConnMaxLifetime(15 * time.Minute)
+	con.SetMaxOpenConns(20)
+	con.SetMaxIdleConns(config.clickhouseConfig.Concurrent)
+	//con.SetConnMaxLifetime(30 * time.Second)
+	con.SetConnMaxLifetime(time.Second * time.Duration(config.clickhouseConfig.ConnectionLifeTime))
 }
 
 func consumer(ctx context.Context) {
@@ -583,10 +585,10 @@ func exec(ctx context.Context) {
 			for {
 				time.Sleep(2 * time.Second)
 				con, _ = sqlx.Open("clickhouse", driver)
-				con.SetMaxIdleConns(15)
-				//con.SetConnMaxLifetime(15 * time.Minute)
-				con.SetConnMaxLifetime(30 * time.Second)
-				con.SetMaxOpenConns(30)
+				con.SetMaxOpenConns(20)
+				con.SetMaxIdleConns(config.clickhouseConfig.Concurrent)
+				//con.SetConnMaxLifetime(30 * time.Second)
+				con.SetConnMaxLifetime(time.Second * time.Duration(config.clickhouseConfig.ConnectionLifeTime))
 				if err := con.Ping(); err == nil {
 					wg.Add(1)
 					go exec(ctx)

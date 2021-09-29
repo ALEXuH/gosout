@@ -1,54 +1,37 @@
 System:
-  Cpu: 18
+  Cpu: 30
   Memory: 10
   ChannelCount: 350000
   FilterCount: 30
 Kafka:
-  Topic: 'test10'
-  Broker: '192.168.30.190:19091,192.168.30.190:19092,192.168.30.190:19093'
+  Topic: 'yanshi.topic'
+  Broker: '192.168.30.61:19091,192.168.30.61:19092,192.168.30.61:19093'
   threads: 24
   Version: '0.10.2.1'
-  ClientId: 'sadclient'
-  GroupId: 'go-data'
+  ClientId: 'go-client'
+  GroupId: 'go-dat22a32252d445512113'
   FromBeginning: False
 Filter:
   match:
-    - 'bytesIn==100 & bytesIn!=100'
-    - 'bytesIn==100'
-  Rename:
-    - 'hostName1:hostName2'
-    - 'hostName2:hostName2'
-    - 'hostName3:hostName2'
-  Add:
-    columns1:
-      match:
-        - 'name == a & age != 10'
-        - 'bytesOut==100'
-      value: 20
-      column: 'dsdsad'
-    columns2:
-      value: 'dsad'
-      column: 'dsad'
-    columns3:
-      value: '10'
-      column: 'ddsasad'
+    - 'srcAddress regex ^10\. & destPort in 3306,9200'
   Convert:
     - 'eventId'
     - 'eventNum'
 Clickhouse:
   Database: 'ailpha'
-  TableName: 'ailpha_securitylog'
+  TableName: 'ailpha_securitylog_test'
   Fields: '*'
   Debug: False
   UserName: 'default'
   Password: ''
   BlockSize: 300000
-  Hosts: '192.168.30.239:19100'
+  Hosts: '192.168.30.190:19100'
   FlushSize: 200000
   FlushTime: 30
   Lz4Compress: 1
   Concurrent: 8
   Location: 'Asia/Shanghai'
+  ConnectionLifeTime: 60
   DateTimeFormat:
-    - '20060102150405'
     - '2006-01-02 15:04:05'
+    - '2006-01-02T15:04:05Z'
