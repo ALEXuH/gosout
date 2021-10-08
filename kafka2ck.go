@@ -489,7 +489,7 @@ func filer(ctx context.Context) {
 								} else {
 									args[ix] = ""
 								}
-							case "Nullable(UInt32)", "UInt32", "Nullable(UInt8)", "Nullable(UInt64)", "Nullable(UInt16)", "Nullable(Int8)", "Int16", "UInt8", "UInt64", "UInt16", "Int8":
+							case "Nullable(UInt32)", "UInt32", "Nullable(UInt8)", "Nullable(UInt64)", "Nullable(UInt16)", "Nullable(Int8)", "Int16", "UInt8", "UInt64", "UInt16", "Int8", "Int64":
 								switch value.(type) {
 								case float64:
 									args[ix] = int(value.(float64))
