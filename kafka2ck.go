@@ -111,11 +111,11 @@ func (consumer *consumerHandler) ConsumeClaim(sess sarama.ConsumerGroupSession, 
 		err := jsonConfig.Unmarshal(msg.Value, &f)
 		if err != nil {
 			logger.Println("err parse")
+			logger.Println(msg.Value)
+		} else {
+			m := f.(map[string]interface{})
+			kafkaChannel <- m
 		}
-		m := f.(map[string]interface{})
-		//fmt.Println(msg.Value)
-		//fmt.Println(m)
-		kafkaChannel <- m
 	}
 	return nil
 }
@@ -139,7 +139,6 @@ func init() {
 	viper.SetConfigName("config")                 // name of config file (without extension)
 	viper.SetConfigType("yaml")                   // REQUIRED if the config file does not have the extension in the name
 	viper.AddConfigPath(filepath.Dir(os.Args[0])) // optionally look for config in the working directory
-	//viper.AddConfigPath("C:\\Users\\think\\go\\src\\output\\common\\") // optionally look for config in the working directory
 	//viper.AddConfigPath("C:\\Users\\think\\go\\src\\awesomeProject1\\") // optionally look for config in the working directory
 	logger.Println(" current run path:", filepath.Dir(os.Args[0]))
 	err := viper.ReadInConfig() // Find and read the config file
