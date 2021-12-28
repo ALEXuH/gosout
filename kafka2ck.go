@@ -533,12 +533,12 @@ func filer(ctx context.Context) {
 								}
 								for _, layout := range config.clickhouseConfig.DateFormat {
 									if layout == "UNIX_MS" {
-										if t1, err := ParseTimeStamp(value); err == nil {
+										if t1, err := ParseTimeStampMs(value); err == nil {
 											args[ix] = t1
 											break
 										}
 									} else if layout == "UNIX" {
-										if t1, err := ParseTimeStampMs(value); err == nil {
+										if t1, err := ParseTimeStamp(value); err == nil {
 											args[ix] = t1
 											break
 										}
