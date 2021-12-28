@@ -2,17 +2,20 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	_ "github.com/ClickHouse/clickhouse-go"
 	"github.com/Shopify/sarama"
 	"github.com/jmoiron/sqlx"
-	json "github.com/json-iterator/go"
+	jsoniter "github.com/json-iterator/go"
 	"github.com/spf13/viper"
 	"log"
+	"math"
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"runtime"
 	"strconv"
@@ -98,10 +101,10 @@ func (consumer *consumerHandler) Cleanup(sarama.ConsumerGroupSession) error {
 	return nil
 }
 
-var jsonConfig = json.Config{
+var jsonConfig = jsoniter.Config{
 	EscapeHTML:              true,
 	MarshalFloatWith6Digits: true,
-	UseNumber:               false,
+	UseNumber:               true,
 }.Froze()
 
 func (consumer *consumerHandler) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
@@ -239,14 +242,15 @@ func consumer(ctx context.Context) {
 	}
 	KafkaConfig.ClientID = config.kafkaConfig.ClientId
 	KafkaConfig.Consumer.Return.Errors = true
-	KafkaConfig.Consumer.Offsets.Initial = sarama.OffsetNewest
-	KafkaConfig.Consumer.Group.Rebalance.Strategy = sarama.BalanceStrategyRange
-	KafkaConfig.Consumer.Group.Session = struct{ Timeout time.Duration }{Timeout: 180 * time.Second}
-	KafkaConfig.Consumer.Group.Heartbeat = struct{ Interval time.Duration }{Interval: 60 * time.Second}
 
 	if config.kafkaConfig.Offset {
 		KafkaConfig.Consumer.Offsets.Initial = sarama.OffsetOldest
+	} else {
+		KafkaConfig.Consumer.Offsets.Initial = sarama.OffsetNewest
 	}
+	KafkaConfig.Consumer.Group.Rebalance.Strategy = sarama.BalanceStrategyRange
+	KafkaConfig.Consumer.Group.Session = struct{ Timeout time.Duration }{Timeout: 180 * time.Second}
+	KafkaConfig.Consumer.Group.Heartbeat = struct{ Interval time.Duration }{Interval: 60 * time.Second}
 
 	client, err := sarama.NewConsumerGroup(strings.Split(config.kafkaConfig.Broker, ","),
 		config.kafkaConfig.GroupId,
@@ -423,6 +427,8 @@ func interface2String(inter interface{}) string {
 	switch inter.(type) {
 	case string:
 		return inter.(string)
+	case json.Number:
+		return inter.(json.Number).String()
 	case float64:
 		return strconv.FormatFloat(inter.(float64), 'f', 0, 64)
 	case int:
@@ -479,48 +485,68 @@ func filer(ctx context.Context) {
 						} else {
 							switch v.Type {
 							case "String", "Nullable(String)":
-								if value != nil {
-									//args[ix] = interface2String(value)
-									//if v.Name == "eventIds"{
-									//	args[ix] = interface2String(value)
-									//}
+								switch value.(type) {
+								case json.Number:
+									args[ix] = value.(json.Number).String()
+								case string:
 									args[ix] = value
-								} else {
-									args[ix] = ""
 								}
 							case "Nullable(UInt32)", "UInt32", "Nullable(UInt8)", "Nullable(UInt64)", "Nullable(UInt16)", "Nullable(Int8)", "Int16", "UInt8", "UInt64", "UInt16", "Int8", "Int64":
 								switch value.(type) {
-								case float64:
-									args[ix] = int(value.(float64))
-									continue
-								}
-
-								if vt, err := strconv.ParseInt(value.(string), 10, 64); err != nil {
-									logger.Println(name, "warning int parse err... value: ", name, ":", value)
-									args[ix] = 0
-								} else {
-									args[ix] = vt
+								case json.Number:
+									if va, err := value.(json.Number).Int64(); err == nil {
+										args[ix] = va
+									} else {
+										logger.Println(name, "warning int parse err... value: ", name, ":", value)
+									}
+								case string:
+									if vt, err := strconv.ParseInt(value.(string), 10, 64); err != nil {
+										logger.Println(name, "warning int parse err... value: ", name, ":", value)
+										args[ix] = 0
+									} else {
+										args[ix] = vt
+									}
 								}
 							case "Float32", "Float64", "Nullable(Float32)", "Nullable(Float64)":
 								switch value.(type) {
-								case float64:
-									args[ix] = value
-									continue
+								case json.Number:
+									if va, err := value.(json.Number).Float64(); err == nil {
+										args[ix] = va
+									} else {
+										logger.Println(name, "warning int parse err... value: ", name, ":", value)
+									}
+								case string:
+									if vt, err := strconv.ParseFloat(value.(string), 64); err != nil {
+										logger.Println(name, "warning float parse err... value: ", name, ":", value)
+										args[ix] = vt
+									} else {
+										args[ix] = 0.0
+									}
 								}
-								if vt, err := strconv.ParseFloat(value.(string), 64); err != nil {
-									logger.Println(name, "warning float parse err... value: ", name, ":", value)
-									args[ix] = vt
-								} else {
-									args[ix] = 0.0
-								}
-								args[ix] = 0.0
 							case "DateTime", "Nullable(DateTime)":
 								args[ix] = "1996-03-01 12:12:12"
+								//logger.Println(reflect.TypeOf(value))
 								//args[ix] = time.Now().Format("2006-01-02 15:04:05")
+								switch value.(type) {
+								case json.Number:
+									value = value.(json.Number).String()
+								}
 								for _, layout := range config.clickhouseConfig.DateFormat {
-									if t1, err := time.ParseInLocation(layout, value.(string), location); err == nil {
-										args[ix] = t1
-										break
+									if layout == "UNIX_MS" {
+										if t1, err := ParseTimeStamp(value); err == nil {
+											args[ix] = t1
+											break
+										}
+									} else if layout == "UNIX" {
+										if t1, err := ParseTimeStampMs(value); err == nil {
+											args[ix] = t1
+											break
+										}
+									} else {
+										if t1, err := time.ParseInLocation(layout, value.(string), location); err == nil {
+											args[ix] = t1
+											break
+										}
 									}
 								}
 								if args[ix] == "1996-03-01 12:12:12" {
@@ -668,6 +694,70 @@ func retrieve(database string, tableName string) {
 	}
 }
 
+func ParseTimeStamp(t interface{}) (time.Time, error) {
+	var (
+		rst time.Time
+	)
+	if v, ok := t.(json.Number); ok {
+		t1, err := v.Int64()
+		if err != nil {
+			return rst, err
+		}
+		return time.Unix(t1, 0), nil
+	}
+
+	if v, ok := t.(string); ok {
+		t1, err := strconv.Atoi(v)
+		if err != nil {
+			f, err := strconv.ParseFloat(v, 64)
+			if err != nil {
+				return rst, err
+			}
+			t1 := math.Floor(f)
+			return time.Unix(int64(t1), int64(1000000000*(f-t1))), nil
+		}
+		return time.Unix(int64(t1), 0), nil
+	}
+
+	if t1, ok := t.(int); ok {
+		return time.Unix(int64(t1), 0), nil
+	}
+	if t1, ok := t.(int64); ok {
+		return time.Unix(t1, 0), nil
+	}
+	return rst, fmt.Errorf("%s unknown type:%s", t, reflect.TypeOf(t).String())
+}
+
+func ParseTimeStampMs(t interface{}) (time.Time, error) {
+	var (
+		rst time.Time
+	)
+	if reflect.TypeOf(t).String() == "json.Number" {
+		t1, err := t.(json.Number).Int64()
+		if err != nil {
+			return rst, err
+		}
+		return time.Unix(t1/1000, t1%1000*1000000), nil
+	}
+	if reflect.TypeOf(t).Kind() == reflect.String {
+		t1, err := strconv.Atoi(t.(string))
+		if err != nil {
+			return rst, err
+		}
+		t2 := int64(t1)
+		return time.Unix(t2/1000, t2%1000*1000000), nil
+	}
+	if reflect.TypeOf(t).Kind() == reflect.Int {
+		t1 := int64(t.(int))
+		return time.Unix(t1/1000, t1%1000*1000000), nil
+	}
+	if reflect.TypeOf(t).Kind() == reflect.Int64 {
+		t1 := t.(int64)
+		return time.Unix(t1/1000, t1%1000*1000000), nil
+	}
+	return rst, fmt.Errorf("%s unknown type:%s", t, reflect.TypeOf(t).String())
+}
+
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	sigterm := make(chan os.Signal, 1)
@@ -683,6 +773,7 @@ func main() {
 	//		return
 	//	}
 	//}()
+
 	select {
 	case <-sigterm:
 		cancel()
@@ -690,4 +781,5 @@ func main() {
 	}
 	wg.Wait()
 	logger.Println("over")
+
 }
