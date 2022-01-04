@@ -219,7 +219,8 @@ func init() {
 	}
 	host := strings.Split(clickhouseConfig.AltHosts, ",")
 	//driver := fmt.Sprintf("tcp://%s?debug=%s&database=%s&compress=%d&block_size=%d",host[0],strconv.FormatBool(clickhouseConfig.Debug),clickhouseConfig.Database, clickhouseConfig.Lz4Compress, clickhouseConfig.BlockSize)
-	driver := fmt.Sprintf("tcp://%s?debug=%s&database=%s&compress=%d&alt_hosts=%s&write_timeout=600", host[0], strconv.FormatBool(config.clickhouseConfig.Debug), config.clickhouseConfig.Database, config.clickhouseConfig.Lz4Compress, strings.Join(host, ","))
+	driver := fmt.Sprintf("tcp://%s?debug=%s&database=%s&compress=%d&alt_hosts=%swrite_timeout=600&username=%s&password=%s", host[0], strconv.FormatBool(config.clickhouseConfig.Debug), config.clickhouseConfig.Database, config.clickhouseConfig.Lz4Compress, strings.Join(host, ","), config.clickhouseConfig.UserName, config.clickhouseConfig.Password)
+
 	connect, err := sqlx.Open("clickhouse", driver)
 	if err != nil {
 		logger.Fatal("connect clickhouse err:", err)
@@ -605,7 +606,7 @@ func exec(ctx context.Context) {
 	defer func() {
 		if r := recover(); r != nil {
 			host := strings.Split(config.clickhouseConfig.AltHosts, ",")
-			driver := fmt.Sprintf("tcp://%s?debug=%s&database=%s&compress=%d&alt_hosts=%swrite_timeout=600", host[0], strconv.FormatBool(config.clickhouseConfig.Debug), config.clickhouseConfig.Database, config.clickhouseConfig.Lz4Compress, strings.Join(host, ","))
+			driver := fmt.Sprintf("tcp://%s?debug=%s&database=%s&compress=%d&alt_hosts=%swrite_timeout=600&username=%s&password=%s", host[0], strconv.FormatBool(config.clickhouseConfig.Debug), config.clickhouseConfig.Database, config.clickhouseConfig.Lz4Compress, strings.Join(host, ","), config.clickhouseConfig.UserName, config.clickhouseConfig.Password)
 			for {
 				time.Sleep(2 * time.Second)
 				con, _ = sqlx.Open("clickhouse", driver)
